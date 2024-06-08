@@ -1,0 +1,235 @@
+clc; close all; clearvars;
+
+%% Plant Model
+
+% Parameters
+m_J = .2;            % Reel mass (kg)
+r = .05;            % Reel radius (m)
+k = 720;          % Spring stiffness (N/m)
+m = 100;             % Mass (kg)
+g = 9.81;
+N = 59;
+J = 1/2*m_J*r^2;    % Moment of inertia for cylinder
+ka = .41;          % amplifer gain
+km = .507;         % motor gain 
+
+% State Model
+A = [0,-r/(2*J),0;k*r/2,0,-k/2;0,1/(2*m),0];
+B = [1/J,0;0,0;0,1/m];
+C = [1,0,0;0,1,0;0,0,1;0,-r/(2*J),0;k*r/2,0,-k/2;0,1/(2*m),0];
+D = [0,0;0,0;0,0;1/J,0;0,0;0,1/m];
+
+C2 = [1,0,0;0,1,0;0,0,1];
+D2 = [0,0;0,0;0,0];
+
+stateModel = ss(A,B,C2,D2);
+stateModel.InputName = {'T_m','F_{ext}'};
+% stateModel.OutputName = {'\Omega_J','f_k','v_m','\Omega_J^\prime','f_k^\prime','v_m^\prime'};
+stateModel.OutputName = {'\Omega_J','f_k','v_m'};
+
+% Transfer Function (T_m to f_k)
+sys = tf(stateModel);
+T1 = sys(2,1);
+
+% Transfer Function (T_m to f_K')
+% T2 = sys(5,1);
+
+% Transfer Function (f_ext to f_k)
+T3 = sys(2,2);
+
+% Transfer Function(T_m to v_m)
+T4 = sys(3, 1);
+
+% Transfer Function(T_m to v_m)
+T5 = sys(3, 2);
+
+% Transfer Function (T_m to Omega_j)
+T6 = sys(1, 1);
+
+% Transfer Function (f_ext to omega_j)
+T7 = sys(1, 2);
+
+%% Controller Design
+close all
+
+
+% Target
+PO = 10;           % Percent overshoot
+z = -log(PO/100)/sqrt(pi^2+log(PO/100)^2);
+ts = 1;            % Settling time
+zw = 4/ts;
+
+s = tf('s');
+
+BTI = .005;
+
+% C = PIDtune(T1, "PIDF");
+
+% pzmap(C);
+% return;
+
+discrete_t = linspace(0,10,10/BTI+1);
+
+color1 = ["y", "c"];
+color = ["r", "b"];
+
+sample_time = linspace(0, 10, 2001);
+for c = 1:3
+    u = -c * .33;
+    x0 = [0, 0, 0];
+    if u == -.99
+        u = -.90;
+    end
+
+    simout = sim("BWS_discrete_PIDF.slx");
+    
+    yout = simout.yout;
+    t = simout.tout;
+    % f_k = yout(:,1);
+    % f_ext = yout(:,2);
+    % volt = yout(:,3);
+    % curr = yout(:,4);
+    % tor_m = yout(:,5);
+    % error = yout(:, 6);
+    % v_mass = yout(:, 7);
+    % motor_rot = yout(:, 8);
+    f_t = yout{1}.Values.Data;
+    f_ext = yout{2}.Values.Data;
+    volt = yout{3}.Values.Data;
+    curr = yout{4}.Values.Data;
+    tor_m = yout{5}.Values.Data;
+    err = yout{6}.Values.Data;
+    v_mass = yout{7}.Values.Data;
+    x_mass = yout{8}.Values.Data;
+    f_dist = yout{9}.Values.Data;
+    omega_j = yout{10}.Values.Data;
+    title_size = 30;
+    axis_size = 27;
+    lw = 3;
+    
+    subplot(2,3,1);
+    plot(t, omega_j, 'LineWidth', lw);
+    xlabel("time (s)");
+    ylabel("omega_j (rad/s)");
+    fontsize(gca, axis_size,'points')   % 'pixels', 'centimeters', 'inches'
+    [te,s] = title("time vs. omega_j");
+    te.FontSize = title_size;
+    grid on;
+    hold on;
+
+    figure(1);
+    subplot(2,3,2);
+    plot(t, f_t);
+    ylabel("F_t(N)");
+    xlabel("time(s)");
+    fontsize(gca, axis_size,'points')   % 'pixels', 'centimeters', 'inches'
+    [te,s] = title("time vs. f_t");
+    te.FontSize = title_size;
+    grid on;
+    hold on;
+
+    figure(1);
+    subplot(2,3,3);
+    plot(t, volt);
+    ylabel("Voltage (V)")
+    xlabel("time(s)");
+    fontsize(gca, axis_size,'points')   % 'pixels', 'centimeters', 'inches'
+    [te,s] = title("time vs. voltage");
+    te.FontSize = title_size;
+    grid on;
+    hold on;
+
+    figure(1);
+    subplot(2,3,4);
+    plot(t, curr);
+    title("Current vs. Time");
+    ylabel("Current (A)");
+    hold on;
+
+    figure(1);
+    subplot(2,3,5);
+    plot(t,tor_m);
+    title("Torque vs. Time");
+    ylabel("Torque (N-m)");
+    hold on;
+
+    figure(1);
+    subplot(2,3,6);
+    % plot(sample_time,err);
+    plot(t, err);
+    title("Error vs. Time");
+    ylabel("Error (N)");
+    hold on;
+
+    figure(2);
+    subplot(1,2,1);
+    plot(t,v_mass);
+    title("Mass Velocity vs. Time");
+    ylabel("Velocity Mass (m/s)")
+    hold on;
+
+    figure(2);
+    subplot(1,2,2);
+    plot(t,motor_rot);
+    title("Mass Position vs. Time");
+    ylabel("Mass Position (m)")
+    hold on;
+
+    % figure(2);
+    % subplot(1,2,1);
+    % [m_index, col] = find(motor_rot<0);
+    % motor_rot(m_index) = 0;
+    % hold on;
+    % holding = zeros(size(motor_rot,1), 1);
+    % r = transpose(.01*normrnd(0, 1, [1, 2001]));
+    % % r = movmean(r, 3);
+    % mo_rot = motor_rot(1: round(size(motor_rot)/2000): end);
+    % plot(transpose(sample_time), mo_rot + r + .005, color1(c-1));
+    % plot(t, motor_rot, strcat("--",color(c-1)));
+    % title("Mass Position vs. Time");
+    % ylabel("Mass Position(m)");
+    % hold on;
+    % 
+    % figure(2);
+    % subplot(1,2,2);
+    % r = transpose(.1*normrnd(0, 1, [1, 2001]));
+    % % r = movmean(r, 3);
+    % f_ksamp = f_k(1: round(size(motor_rot)/2000): end);
+    % display(size(f_ksamp));
+    % plot(sample_time, f_ksamp - r - .075 * c, color1(c-1))
+    % hold on;
+    % plot(discrete_t, f_k, strcat("--",color(c-1)));
+    % title("Tension Force vs. Time");
+    % ylabel("Tension Force (N)");
+    % hold on;
+
+
+end
+
+
+
+for i = 1:6
+    figure(1)
+    subplot(2,3,i)
+    legend("33% BWS");
+    xlabel("Time (s)");
+end
+
+for i = 1:2
+    figure(2)
+    subplot(1,2,i)
+    legend("66% BWS Experimental", "66% BWS Reference", "90% BWS Experimental", "90% BWS Reference");
+    xlabel("Time (s)");
+end
+% z1 = 5;
+% p1 = 20;
+% k2 = .5;
+% 
+% G1 = zpk(-z1,-p1,1);
+% GH = series(series(series(ka*km*G1,T2),k2*s+1),1/s);
+% 
+% figure
+% rlocus(GH);
+% sgrid(z,0);
+% xline(-zw,':');
+% [k1,poles] = rlocfind(GH);
